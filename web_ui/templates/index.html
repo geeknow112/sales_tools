@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keepa API テストツール</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .test-button {
+            background-color: #28a745;
+            margin-bottom: 20px;
+        }
+        .test-button:hover {
+            background-color: #218838;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+        }
+        .status {
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .status.ok {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.warning {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .example {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .example h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .example-asin {
+            font-family: monospace;
+            background-color: #e9ecef;
+            padding: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .example-asin:hover {
+            background-color: #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛒 Keepa API テストツール</h1>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <button id="testBtn" class="test-button" onclick="testConnection()">
+            🔍 API接続テスト
+        </button>
+        
+        <div class="example">
+            <h3>📝 使用例</h3>
+            <p>テスト用ASIN（クリックで入力）:</p>
+            <div class="example-asin" onclick="setAsin('B0B5SDFLTB')">B0B5SDFLTB</div>
+            <p>値下がり商品検索:</p>
+            <div class="example-asin" onclick="searchDiscounts()">🔍 20%値下がり食品を検索</div>
+        </div>
+        
+        <form id="productForm">
+            <div class="form-group">
+                <label for="asin">ASIN:</label>
+                <input type="text" id="asin" name="asin" placeholder="例: B0B5SDFLTB" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="domain">Amazon ドメイン:</label>
+                <select id="domain" name="domain">
+                    <option value="US">US (amazon.com)</option>
+                    <option value="GB">UK (amazon.co.uk)</option>
+                    <option value="DE">DE (amazon.de)</option>
+                    <option value="FR">FR (amazon.fr)</option>
+                    <option value="JP" selected>JP (amazon.co.jp)</option>
+                    <option value="CA">CA (amazon.ca)</option>
+                    <option value="IT">IT (amazon.it)</option>
+                    <option value="ES">ES (amazon.es)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="action">実行アクション:</label>
+                <select id="action" name="action" onchange="toggleFields()">
+                    <option value="analyze">価格分析</option>
+                    <option value="info">商品情報取得</option>
+                    <option value="search_discounts">値下がり商品検索</option>
+                    <option value="trending">トレンド商品取得</option>
+                </select>
+            </div>
+            
+            <!-- 値下がり検索用の追加フィールド -->
+            <div id="discount-fields" style="display: none;">
+                <div class="form-group">
+                    <label for="discount_threshold">値下がり閾値 (%):</label>
+                    <input type="number" id="discount_threshold" name="discount_threshold" value="20" min="1" max="90">
+                </div>
+                <div class="form-group">
+                    <label for="category">カテゴリ:</label>
+                    <select id="category" name="category">
+                        <option value="food" selected>食品</option>
+                        <option value="electronics">家電</option>
+                        <option value="books">本</option>
+                        <option value="all">全カテゴリ</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="limit">取得件数:</label>
+                    <input type="number" id="limit" name="limit" value="10" min="1" max="50">
+                </div>
+            </div>
+            
+            <button type="submit">🚀 実行</button>
+        </form>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        // API接続テスト
+        async function testConnection() {
+            const statusDiv = document.getElementById('status');
+            const testBtn = document.getElementById('testBtn');
+            
+            testBtn.disabled = true;
+            testBtn.textContent = '🔄 テスト中...';
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = 'API接続をテスト中...';
+            statusDiv.className = 'status';
+            
+            try {
+                const response = await fetch('/api/test');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.textContent = `✅ ${data.message}`;
+                    statusDiv.className = 'status ok';
+                } else {
+                    statusDiv.textContent = `⚠️ ${data.message}`;
+                    statusDiv.className = 'status warning';
+                }
+            } catch (error) {
+                statusDiv.textContent = `❌ 接続エラー: ${error.message}`;
+                statusDiv.className = 'status error';
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '🔍 API接続テスト';
+            }
+        }
+        
+        // ASIN設定
+        function setAsin(asin) {
+            document.getElementById('asin').value = asin;
+        }
+        
+        // 値下がり商品検索
+        function searchDiscounts() {
+            document.getElementById('action').value = 'search_discounts';
+            document.getElementById('asin').value = '';
+            toggleFields();
+        }
+        
+        // フィールド表示切り替え
+        function toggleFields() {
+            const action = document.getElementById('action').value;
+            const discountFields = document.getElementById('discount-fields');
+            const asinField = document.getElementById('asin').parentElement;
+            
+            if (action === 'search_discounts' || action === 'trending') {
+                discountFields.style.display = 'block';
+                asinField.style.display = 'none';
+            } else {
+                discountFields.style.display = 'none';
+                asinField.style.display = 'block';
+            }
+        }
+        
+        // フォーム送信
+        document.getElementById('productForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            
+            // ローディング表示
+            submitBtn.disabled = true;
+            submitBtn.textContent = '🔄 処理中...';
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result loading';
+            resultDiv.textContent = 'Keepa APIから情報を取得中...';
+            
+            try {
+                const formData = new FormData(e.target);
+                const action = formData.get('action');
+                
+                let data = {
+                    action: action,
+                    domain: formData.get('domain')
+                };
+                
+                // アクションに応じてデータを追加
+                if (action === 'search_discounts') {
+                    data.discount_threshold = parseFloat(formData.get('discount_threshold'));
+                    data.category = formData.get('category');
+                    data.limit = parseInt(formData.get('limit'));
+                } else if (action === 'trending') {
+                    // トレンド検索は追加パラメータなし
+                } else {
+                    // 通常の商品検索
+                    data.asin = formData.get('asin');
+                    
+                    if (!data.asin) {
+                        resultDiv.className = 'result error';
+                        resultDiv.textContent = '❌ ASINが入力されていません';
+                        return;
+                    }
+                }
+                
+                const response = await fetch('/api/product', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    
+                    // 結果の種類に応じて表示を調整
+                    if (result.products && Array.isArray(result.products)) {
+                        let displayText = `✅ ${result.action === 'search_discounts' ? '値下がり商品検索' : 'トレンド商品'} 成功!\n\n`;
+                        displayText += `見つかった商品数: ${result.found_products}件\n\n`;
+                        
+                        result.products.forEach((product, index) => {
+                            displayText += `【${index + 1}】${product.title}\n`;
+                            displayText += `ASIN: ${product.asin}\n`;
+                            displayText += `現在価格: ${product.current_price} ${product.currency}\n`;
+                            
+                            if (product.discount_rate) {
+                                displayText += `値下がり率: ${product.discount_rate}%\n`;
+                                displayText += `最高価格: ${product.max_price} ${product.currency}\n`;
+                            }
+                            displayText += '\n';
+                        });
+                        
+                        resultDiv.textContent = displayText;
+                    } else {
+                        resultDiv.textContent = `✅ 成功!\n\n${JSON.stringify(result, null, 2)}`;
+                    }
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ エラー!\n\n${JSON.stringify(result, null, 2)}`;
+                }
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ 通信エラー: ${error.message}`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 実行';
+            }
+        });
+        
+        // ページ読み込み時に自動テスト
+        window.addEventListener('load', function() {
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>

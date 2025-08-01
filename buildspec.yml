@@ -1,0 +1,54 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+      - pip install pytest pytest-cov
+
+  pre_build:
+    commands:
+      - echo "Running pre-build phase..."
+      - echo "Python version:"
+      - python --version
+      - echo "Pip list:"
+      - pip list
+
+  build:
+    commands:
+      - echo "Running build phase..."
+      - echo "Running unit tests..."
+      - python -m pytest tests/unit/ -v --cov=src --cov-report=term-missing
+      - echo "Build completed successfully"
+
+  post_build:
+    commands:
+      - echo "Running post-build phase..."
+      - echo "Preparing artifacts..."
+      - ls -la
+
+artifacts:
+  files:
+    - src/**/*
+    - requirements.txt
+    - '**/*'
+  exclude-paths:
+    - tests/**/*
+    - .git/**/*
+    - __pycache__/**/*
+    - '*.pyc'
+
+reports:
+  pytest_reports:
+    files:
+      - pytest-report.xml
+    base-directory: .
+    file-format: JUNITXML
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
