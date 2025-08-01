@@ -163,17 +163,49 @@ event = {
 
 ## CI/CD パイプライン
 
-### GitHub Actions
+### 🚀 自動デプロイフロー
 
-- **テスト**: プルリクエスト時に単体テスト実行
-- **E2Eテスト**: プルリクエスト時にE2Eテスト実行（オプション）
-- **デプロイ**: mainブランチへのプッシュ時にCodePipelineトリガー
+```
+PR作成 → GitHub Actions (テスト) → mainマージ → CodePipeline → Lambda デプロイ
+```
 
-### CodePipeline
+#### GitHub Actions
+- **プルリクエスト時**: 自動テスト実行
+- **mainブランチプッシュ時**: CodePipelineトリガー
 
+#### CodePipeline
 1. **Source**: GitHubからソースコード取得
-2. **Build**: CodeBuildでテスト実行・ビルド
-3. **Deploy**: Lambda関数へデプロイ
+2. **Build**: CodeBuildでテスト・ビルド・デプロイ
+
+### 📋 セットアップ手順
+
+#### 1. GitHub Secrets設定
+```bash
+# 必要なSecrets
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+SALES_TOOLS_API_KEY_TEST=your_test_api_key
+```
+
+#### 2. CodePipelineデプロイ
+```bash
+# 環境変数設定
+export GITHUB_TOKEN=your_github_token
+export SALES_TOOLS_API_KEY=your_api_key
+
+# パイプラインデプロイ
+./scripts/deploy-pipeline.sh
+```
+
+#### 3. 自動デプロイ確認
+```bash
+# テスト用ブランチ作成
+git checkout -b feature/test-deploy
+git push origin feature/test-deploy
+
+# PRを作成してテスト実行を確認
+# mainにマージして自動デプロイを確認
+```
 
 ## 費用見積もり
 

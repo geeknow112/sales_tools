@@ -1,5 +1,11 @@
 version: 0.2
 
+env:
+  variables:
+    PYTHON_VERSION: "3.9"
+  parameter-store:
+    SALES_TOOLS_API_KEY: "/sales-tools/api-key"
+
 phases:
   install:
     runtime-versions:
@@ -8,46 +14,54 @@ phases:
       - echo "Installing dependencies..."
       - pip install --upgrade pip
       - pip install -r requirements.txt
-      - pip install pytest pytest-cov
+      - pip install pytest pytest-cov flake8
 
   pre_build:
     commands:
       - echo "Running pre-build phase..."
       - echo "Python version:"
       - python --version
-      - echo "Pip list:"
-      - pip list
+      - echo "Running unit tests..."
+      - python -m pytest tests/unit/ -v --cov=src --cov-report=term-missing
+      - echo "Running code linting..."
+      - flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+      - echo "Testing Lambda function..."
+      - cd src && python -c "
+        try:
+            from lambda_function import lambda_handler;
+            event = {'action': 'status'};
+            result = lambda_handler(event, None);
+            print('Lambda test result:', result['statusCode']);
+            assert result['statusCode'] == 200, 'Lambda test failed'
+        except Exception as e:
+            print('Lambda test error:', str(e));
+            exit(1)
+        " && cd ..
 
   build:
     commands:
-      - echo "Running build phase..."
-      - echo "Running unit tests..."
-      - python -m pytest tests/unit/ -v --cov=src --cov-report=term-missing
-      - echo "Build completed successfully"
+      - echo "Building Lambda deployment package..."
+      - cd src
+      - echo "Creating deployment package..."
+      - zip -r ../lambda-deployment-package.zip . -x "*.pyc" "__pycache__/*" "tests/*"
+      - cd ..
+      - echo "Package size:"
+      - ls -lh lambda-deployment-package.zip
+      - echo "Package contents:"
+      - unzip -l lambda-deployment-package.zip | head -20
 
   post_build:
     commands:
-      - echo "Running post-build phase..."
-      - echo "Preparing artifacts..."
-      - ls -la
+      - echo "Post-build phase..."
+      - echo "Deployment package ready for Lambda update"
+      - echo "Build completed on `date`"
 
 artifacts:
   files:
-    - src/**/*
-    - requirements.txt
-    - '**/*'
-  exclude-paths:
-    - tests/**/*
-    - .git/**/*
-    - __pycache__/**/*
-    - '*.pyc'
-
-reports:
-  pytest_reports:
-    files:
-      - pytest-report.xml
-    base-directory: .
-    file-format: JUNITXML
+    - lambda-deployment-package.zip
+    - infrastructure/**/*
+    - scripts/**/*
+  name: sales-tools-api-$(date +%Y-%m-%d-%H-%M-%S)
 
 cache:
   paths:
