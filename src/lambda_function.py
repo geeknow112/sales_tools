@@ -1,22 +1,19 @@
 # -*- coding: utf-8 -*-
+"""
+AWS Lambda Function for Sales Tools API Integration
+商品価格分析のためのLambda関数
+"""
 import json
 import logging
 import sys
 import os
 
-# シンプル版検索機能をインポート
-from simple_discount_search import search_discounted_products_simple
-
-try:
-    from keepa_api_client import KeepaAPIClient
-    KEEPA_AVAILABLE = True
-except ImportError as e:
-    print(f"Keepa import error: {e}")
-    KEEPA_AVAILABLE = False
+# Sales Tools APIクライアントをインポート
+from sales_tools_api_client import SalesToolsAPIClient
 
 # ログ設定
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def lambda_handler(event, context):
     """
@@ -27,124 +24,150 @@ def lambda_handler(event, context):
         context: Lambda実行コンテキスト
     
     Returns:
-        API Gateway形式のレスポンス
+        レスポンス辞書
     """
     try:
-        # リクエストパラメータの取得
-        if 'body' in event and event['body']:
-            body = json.loads(event['body'])
-        else:
-            body = event
+        logger.info(f"Lambda実行開始: {json.dumps(event, ensure_ascii=False)}")
         
-        asin = body.get('asin', '')
-        domain = body.get('domain', 'JP')  # デフォルト: 日本
-        action = body.get('action', 'analyze')  # デフォルト: 価格分析
+        # リクエストパラメータ取得
+        asin = event.get('asin')
+        domain = event.get('domain', 'JP')
+        action = event.get('action', 'info')
         
-        # ASINが必要なアクションの場合のみチェック
-        if action in ['analyze', 'info'] and not asin:
+        if not asin:
             return {
                 'statusCode': 400,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
                 'body': json.dumps({
-                    'error': 'ASINパラメータが必要です'
+                    'error': 'ASINパラメータが必要です',
+                    'message': 'ASIN parameter is required'
                 }, ensure_ascii=False)
             }
         
-        # Keepa APIクライアント初期化
-        if KEEPA_AVAILABLE and action in ['analyze', 'info']:
-            try:
-                client = KeepaAPIClient()
-            except Exception as e:
-                logger.error(f"Keepa API初期化エラー: {str(e)}")
-                return {
-                    'statusCode': 500,
-                    'headers': {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    'body': json.dumps({
-                        'error': f'Keepa API初期化失敗: {str(e)}'
-                    }, ensure_ascii=False)
-                }
-        else:
-            client = None
+        # Sales Tools APIクライアント初期化
+        try:
+            client = SalesToolsAPIClient()
+        except ValueError as e:
+            logger.error(f"APIクライアント初期化エラー: {str(e)}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'error': 'API設定エラー',
+                    'message': 'Sales Tools API key not configured'
+                }, ensure_ascii=False)
+            }
         
         # アクションに応じた処理
-        if action == 'analyze':
-            if client:
-                result = client.analyze_price_trend(asin, domain)
-            else:
-                result = {'error': 'Keepa APIが利用できません'}
-        elif action == 'info':
-            if client:
-                product = client.get_product_info(asin, domain)
-                if product:
-                    result = {
-                        'asin': asin,
-                        'title': product.get('title', 'N/A'),
-                        'current_price': client.get_current_price(product)
-                    }
-                else:
-                    result = {'error': '商品情報が取得できませんでした'}
-            else:
-                result = {'error': 'Keepa APIが利用できません'}
-        elif action == 'search_discounts':
-            # 値下がり商品検索（シンプル版）
-            discount_threshold = body.get('discount_threshold', 20.0)
-            category = body.get('category', 'food')
-            limit = body.get('limit', 10)
+        if action == 'info':
+            # 商品情報取得
+            result = client.get_product_info(asin, domain)
             
-            result = search_discounted_products_simple(
-                discount_threshold=discount_threshold,
-                category=category,
-                limit=limit
-            )
-        elif action == 'trending':
-            # トレンド商品取得（シンプル版）
-            result = search_discounted_products_simple(
-                discount_threshold=10.0,  # トレンドは低い閾値
-                category='food',
-                limit=10
-            )
-            result['action'] = 'trending'
+        elif action == 'analyze':
+            # 価格トレンド分析
+            result = client.analyze_price_trend(asin, domain)
+            
+        elif action == 'deals':
+            # お得商品検索
+            max_price = event.get('max_price')
+            min_discount = event.get('min_discount', 20.0)
+            result = client.search_deals(max_price=max_price, min_discount=min_discount)
+            
+        elif action == 'status':
+            # API状況確認
+            result = client.get_api_status()
+            
         else:
-            result = {'error': f'未対応のアクション: {action}'}
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'error': '無効なアクション',
+                    'message': f'Invalid action: {action}',
+                    'available_actions': ['info', 'analyze', 'deals', 'status']
+                }, ensure_ascii=False)
+            }
         
-        return {
+        # 結果確認
+        if result is None:
+            return {
+                'statusCode': 404,
+                'body': json.dumps({
+                    'error': 'データが見つかりません',
+                    'message': f'No data found for ASIN: {asin}'
+                }, ensure_ascii=False)
+            }
+        
+        # 成功レスポンス
+        response = {
             'statusCode': 200,
             'headers': {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*'
             },
-            'body': json.dumps(result, ensure_ascii=False, indent=2)
+            'body': json.dumps({
+                'success': True,
+                'action': action,
+                'asin': asin,
+                'domain': domain,
+                'data': result,
+                'timestamp': client.get_api_status().get('timestamp')
+            }, ensure_ascii=False)
         }
+        
+        logger.info(f"Lambda実行完了: {action} - {asin}")
+        return response
         
     except Exception as e:
         logger.error(f"Lambda実行エラー: {str(e)}")
         
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
             'body': json.dumps({
-                'error': 'サーバーエラーが発生しました',
-                'details': str(e)
+                'error': '内部サーバーエラー',
+                'message': str(e)
             }, ensure_ascii=False)
         }
 
-# ローカルテスト用
-if __name__ == "__main__":
+def test_lambda_locally():
+    """ローカルテスト用関数"""
     # テストイベント
-    test_event = {
-        'asin': 'B0B5SDFLTB',
-        'domain': 5,
-        'action': 'analyze'
-    }
+    test_events = [
+        {
+            'asin': 'B08CDYX378',
+            'domain': 'JP',
+            'action': 'info'
+        },
+        {
+            'asin': 'B08CDYX378',
+            'domain': 'JP',
+            'action': 'analyze'
+        },
+        {
+            'action': 'status'
+        }
+    ]
     
-    result = lambda_handler(test_event, None)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print("=== Lambda関数ローカルテスト ===")
+    
+    for i, event in enumerate(test_events, 1):
+        print(f"\n--- テスト {i}: {event.get('action', 'unknown')} ---")
+        
+        try:
+            response = lambda_handler(event, None)
+            print(f"ステータス: {response['statusCode']}")
+            
+            body = json.loads(response['body'])
+            if response['statusCode'] == 200:
+                print(f"成功: {body.get('action', 'N/A')}")
+                if 'data' in body:
+                    data = body['data']
+                    if isinstance(data, dict):
+                        print(f"データ: {data.get('title', data.get('asin', 'N/A'))}")
+                    elif isinstance(data, list):
+                        print(f"データ件数: {len(data)}")
+            else:
+                print(f"エラー: {body.get('error', 'Unknown error')}")
+                
+        except Exception as e:
+            print(f"テストエラー: {str(e)}")
+
+if __name__ == "__main__":
+    test_lambda_locally()

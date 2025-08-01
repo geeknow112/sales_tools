@@ -67,19 +67,19 @@ class ManualLoginAutoTracker:
             logger.error(f"ブラウザ初期化エラー: {str(e)}")
             return False
     
-    def open_keepa_for_manual_login(self):
-        """Keepaを開いて手動ログインを待機"""
+    def open_sales_tool_for_manual_login(self):
+        """Sales Toolを開いて手動ログインを待機"""
         try:
-            logger.info("🏠 Keepaサイトを開きます")
+            logger.info("🏠 Sales Toolサイトを開きます")
             
-            # Keepaメインページにアクセス
+            # Sales Toolメインページにアクセス
             self.driver.get("https://keepa.com/#!")
             self.human_delay(2, 3)
             
             print("\n" + "="*60)
             print("🔐 手動ログインを行ってください")
             print("="*60)
-            print("1. ブラウザでKeepaサイトが開きました")
+            print("1. ブラウザでSales Toolサイトが開きました")
             print("2. 「ログイン」ボタンをクリックしてください")
             print("3. ログイン情報を入力してください")
             print("   - メール: yourenemy1008@gmail.com")
@@ -115,7 +115,7 @@ class ManualLoginAutoTracker:
                 return True
                 
         except Exception as e:
-            logger.error(f"Keepa開始エラー: {str(e)}")
+            logger.error(f"Sales Tool開始エラー: {str(e)}")
             return False
     
     def navigate_to_product_and_track(self, asin: str):
@@ -349,7 +349,7 @@ class ManualLoginAutoTracker:
         if self.driver:
             try:
                 print("\n🔍 処理が完了しました")
-                print("Keepa Webサイト（https://keepa.com/manage/）でトラッキング一覧を確認してください")
+                print("Sales Tool Webサイト（https://keepa.com/manage/）でトラッキング一覧を確認してください")
                 input("確認が完了したらEnterキーを押してブラウザを終了します...")
                 self.driver.quit()
                 logger.info("🔚 ブラウザ終了")
@@ -372,8 +372,8 @@ def main():
         if tracker.setup_browser():
             print("✅ ブラウザ初期化成功")
             
-            # Keepa開始 + 手動ログイン
-            if tracker.open_keepa_for_manual_login():
+            # Sales Tool開始 + 手動ログイン
+            if tracker.open_sales_tool_for_manual_login():
                 print("✅ 手動ログイン完了")
                 
                 # 自動トラッキング設定

@@ -1,10 +1,10 @@
-# Keepa API Integration Project
+# Sales Tools API Integration Project
 
-Keepa APIを使用した商品価格分析システム
+Sales Tools APIを使用した商品価格分析システム
 
 ## 概要
 
-このプロジェクトは、Keepa APIを使用してAmazon商品の価格情報を取得・分析するシステムです。
+このプロジェクトは、Sales Tools APIを使用してAmazon商品の価格情報を取得・分析するシステムです。
 AWS Lambda、CodePipeline、GitHub Actionsを使用したCI/CDパイプラインを構築しています。
 
 ## アーキテクチャ
@@ -19,9 +19,9 @@ GitHub → GitHub Actions → CodePipeline → CodeBuild → Lambda
 - 価格履歴の分析
 - 価格トレンドの可視化
 - REST API形式でのデータ提供
-- **Keepa商品トラッキング自動設定**（新機能）
+- **商品トラッキング自動設定**（新機能）
 
-## Keepaトラッキング自動設定
+## 商品トラッキング自動設定
 
 ### 🎯 手動ログイン + 自動トラッキング設定
 
@@ -44,7 +44,7 @@ python manual_login_auto_tracking.py
 #### 実行フロー
 
 1. **🖥️ Chromeブラウザ起動**
-2. **🏠 Keepaサイト表示**
+2. **🏠 Sales Toolsサイト表示**
 3. **🔐 手動ログイン**（ユーザーが手動で実行）
 4. **🤖 自動トラッキング設定**
    - 商品ページアクセス
@@ -73,7 +73,7 @@ python manual_login_auto_tracking.py
 
 - Python 3.9+
 - AWS CLI設定済み
-- Keepa APIキー
+- Sales Tools APIキー
 - GitHub Personal Access Token
 - **Chrome WebDriver**（トラッキング設定用）
 
@@ -82,7 +82,7 @@ python manual_login_auto_tracking.py
 ```bash
 # リポジトリクローン
 git clone <repository-url>
-cd keepa_work
+cd sales_tools
 
 # 仮想環境作成
 python -m venv venv
@@ -104,12 +104,12 @@ cp .env.example .env
 ```bash
 # CloudFormationスタックデプロイ
 aws cloudformation create-stack \
-  --stack-name keepa-api-stack \
-  --template-body file://infrastructure/cloudformation/keepa-api-stack.yml \
-  --parameters ParameterKey=KeepaApiKey,ParameterValue=YOUR_API_KEY \
+  --stack-name sales-tools-api-stack \
+  --template-body file://infrastructure/cloudformation/sales-tools-api-stack.yml \
+  --parameters ParameterKey=SalesToolsApiKey,ParameterValue=YOUR_API_KEY \
                ParameterKey=GitHubToken,ParameterValue=YOUR_GITHUB_TOKEN \
                ParameterKey=GitHubOwner,ParameterValue=YOUR_GITHUB_USERNAME \
-               ParameterKey=GitHubRepo,ParameterValue=keepa_work \
+               ParameterKey=GitHubRepo,ParameterValue=sales_tools \
   --capabilities CAPABILITY_IAM
 ```
 
@@ -117,7 +117,7 @@ aws cloudformation create-stack \
 
 以下のSecretsをGitHubリポジトリに設定：
 
-- `KEEPA_API_KEY_TEST`: テスト用Keepa APIキー
+- `SALES_TOOLS_API_KEY_TEST`: テスト用Sales Tools APIキー
 - `AWS_ACCESS_KEY_ID`: AWS アクセスキー
 - `AWS_SECRET_ACCESS_KEY`: AWS シークレットキー
 
@@ -134,7 +134,7 @@ cd src
 python lambda_function.py
 ```
 
-### Keepaトラッキング設定
+### 商品トラッキング設定
 
 ```bash
 # 手動ログイン + 自動トラッキング設定
@@ -183,11 +183,11 @@ event = {
 - Lambda: $0.10
 - その他: $1.42
 
-※Keepa API費用は別途
+※Sales Tools API費用は別途
 
 ## 注意事項
 
-- Keepa APIの利用規約を遵守してください
+- Sales Tools APIの利用規約を遵守してください
 - レート制限に注意してAPI呼び出しを行ってください
 - 本番環境での直接デプロイは避け、必ずPR経由で行ってください
 - **トラッキング設定は手動ログインが必要です**
