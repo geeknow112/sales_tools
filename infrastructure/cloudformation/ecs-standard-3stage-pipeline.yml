@@ -1,0 +1,373 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS Standard 3-Stage Pipeline: Source → Build → Deploy'
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: geeknow112
+    
+  GitHubRepo:
+    Type: String
+    Default: sales_tools
+    
+  GitHubToken:
+    Type: String
+    NoEcho: true
+    
+  SalesToolsApiKey:
+    Type: String
+    Default: test_api_key_placeholder
+    NoEcho: true
+
+Resources:
+  # S3 Bucket for Pipeline Artifacts
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'ecs-standard-pipeline-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+
+  # Build Stage Role
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecs-standard-build-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::ecs-standard-pipeline-${AWS::AccountId}/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: '*'
+
+  # Deploy Stage Role
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecs-standard-deploy-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DeployPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::ecs-standard-pipeline-${AWS::AccountId}/*'
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                  - ecs:RunTask
+                  - ecs:StopTask
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+
+  # Build Stage Project
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ecs-standard-build
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: IMAGE_REPO_NAME
+            Value: sales-tools-api
+          - Name: IMAGE_TAG
+            Value: latest
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo "=== Build Stage Starting ==="
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+                - echo Logged in to ECR successfully
+            build:
+              commands:
+                - echo "=== Docker Image Build ==="
+                - echo Build started on `date`
+                - echo Building the Docker image...
+                - cp requirements-ecs.txt requirements.txt
+                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                - echo Docker image built successfully
+            post_build:
+              commands:
+                - echo "=== ECR Push ==="
+                - echo Build completed on `date`
+                - echo Pushing the Docker image...
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                - echo Docker image pushed successfully to ECR
+                - echo "=== Build Stage Completed ==="
+          artifacts:
+            files:
+              - '**/*'
+            name: BuildArtifacts
+
+  # Deploy Stage Project
+  DeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ecs-standard-deploy
+      ServiceRole: !GetAtt DeployRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: CLUSTER_NAME
+            Value: sales-tools-cluster
+          - Name: TASK_DEFINITION
+            Value: sales-tools-task-simple
+          - Name: SUBNET_ID
+            Value: subnet-868197f2
+          - Name: SECURITY_GROUP_ID
+            Value: sg-83a74ee6
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo "=== Deploy Stage Starting ==="
+                - echo "Checking ECS cluster status"
+                - aws ecs describe-clusters --clusters $CLUSTER_NAME
+            build:
+              commands:
+                - echo "=== Stopping Existing Tasks ==="
+                - |
+                  RUNNING_TASKS=$(aws ecs list-tasks --cluster $CLUSTER_NAME --desired-status RUNNING --query 'taskArns' --output text)
+                  if [ "$RUNNING_TASKS" != "None" ] && [ -n "$RUNNING_TASKS" ]; then
+                    for task in $RUNNING_TASKS; do
+                      echo "Stopping task: $task"
+                      aws ecs stop-task --cluster $CLUSTER_NAME --task $task
+                    done
+                    echo "Waiting for tasks to stop..."
+                    sleep 30
+                  else
+                    echo "No running tasks found"
+                  fi
+                - echo "=== Starting New ECS Task ==="
+                - |
+                  TASK_ARN=$(aws ecs run-task \
+                    --cluster $CLUSTER_NAME \
+                    --task-definition $TASK_DEFINITION \
+                    --launch-type FARGATE \
+                    --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+                    --query 'tasks[0].taskArn' --output text)
+                  echo "New task started: $TASK_ARN"
+            post_build:
+              commands:
+                - echo "=== Deploy Verification ==="
+                - echo "Waiting for task to reach running state..."
+                - sleep 60
+                - aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $TASK_ARN --query 'tasks[0].[lastStatus,healthStatus]' --output table
+                - echo "=== Deploy Stage Completed ==="
+          artifacts:
+            files:
+              - '**/*'
+            name: DeployArtifacts
+
+  # CodePipeline Service Role
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecs-standard-pipeline-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetBucketVersioning
+                Resource:
+                  - !Sub 'arn:aws:s3:::ecs-standard-pipeline-${AWS::AccountId}/*'
+                  - !Sub 'arn:aws:s3:::ecs-standard-pipeline-${AWS::AccountId}'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: 
+                  - !GetAtt BuildProject.Arn
+                  - !GetAtt DeployProject.Arn
+
+  # Standard 3-Stage Pipeline
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: ecs-standard-3stage-pipeline
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactsBucket
+      Stages:
+        # Stage 1: Source
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: '1'
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: main
+                OAuthToken: !Ref GitHubToken
+                PollForSourceChanges: false
+              OutputArtifacts:
+                - Name: SourceOutput
+                
+        # Stage 2: Build
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref BuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+                
+        # Stage 3: Deploy
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref DeployProject
+              InputArtifacts:
+                - Name: BuildOutput
+              OutputArtifacts:
+                - Name: DeployOutput
+
+  # GitHub Webhook
+  Webhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Name: ecs-standard-webhook
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubToken
+      Filters:
+        - JsonPath: "$.ref"
+          MatchEquals: refs/heads/main
+        - JsonPath: "$.repository.name"
+          MatchEquals: !Ref GitHubRepo
+      TargetPipeline: !Ref Pipeline
+      TargetAction: SourceAction
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+      RegisterWithThirdParty: true
+
+Outputs:
+  PipelineName:
+    Description: Standard 3-Stage Pipeline Name
+    Value: !Ref Pipeline
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineName'
+    
+  PipelineUrl:
+    Description: Pipeline URL in AWS Console
+    Value: !Sub 'https://console.aws.amazon.com/codesuite/codepipeline/pipelines/${Pipeline}/view'
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineUrl'
+      
+  BuildProjectName:
+    Description: Build Project Name
+    Value: !Ref BuildProject
+    Export:
+      Name: !Sub '${AWS::StackName}-BuildProject'
+      
+  DeployProjectName:
+    Description: Deploy Project Name
+    Value: !Ref DeployProject
+    Export:
+      Name: !Sub '${AWS::StackName}-DeployProject'
