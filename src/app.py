@@ -36,7 +36,7 @@ def get_status():
     """ステータス情報の取得"""
     return jsonify({
         'message': 'Sales Tools API - ECS Fargate Version',
-        'version': '1.2.0',
+        'version': '1.3.0',
         'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
         'deployment_method': 'ECS Fargate',
         'status': 'active',
@@ -46,6 +46,43 @@ def get_status():
             'has_api_key': bool(SALES_TOOLS_API_KEY and SALES_TOOLS_API_KEY != 'test_api_key_placeholder')
         }
     })
+
+@app.route('/tracking/activate', methods=['POST'])
+def activate_tracking():
+    """トラッキングの手動アクティベーション"""
+    try:
+        data = request.get_json()
+        
+        if data and 'asin' in data:
+            # 特定商品のアクティベーション
+            asin = data['asin']
+            tracking_manager.update_product_status(
+                asin, 
+                "active", 
+                time.strftime("%Y-%m-%d %H:%M:%S"),
+                "manual_activation"
+            )
+            message = f"Product {asin} activated successfully"
+        else:
+            # 全商品のアクティベーション
+            tracking_manager.activate_all_pending()
+            message = "All pending products activated successfully"
+        
+        summary = tracking_manager.get_tracking_summary()
+        
+        return jsonify({
+            'message': message,
+            'summary': summary,
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in activate_tracking: {str(e)}")
+        return jsonify({
+            'error': 'Failed to activate tracking',
+            'message': str(e),
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+        }), 500
 
 @app.route('/tracking', methods=['GET'])
 def get_tracking_status():
@@ -131,7 +168,7 @@ def analyze_product():
             },
             'tracking_status': tracking_status,
             'metadata': {
-                'api_version': '1.2.0',
+                'api_version': '1.3.0',
                 'processing_time_ms': 150,
                 'data_source': 'sales_tools_api'
             }
@@ -182,7 +219,7 @@ def get_product_info(asin):
             'tracking_status': tracking_status,
             'metadata': {
                 'retrieved_at': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'api_version': '1.2.0'
+                'api_version': '1.3.0'
             }
         }
         
@@ -207,6 +244,7 @@ def not_found(error):
             'GET /status', 
             'GET /tracking',
             'GET /tracking/<asin>',
+            'POST /tracking/activate',
             'POST /analyze',
             'GET /product/<asin>'
         ],
@@ -214,5 +252,5 @@ def not_found(error):
     }), 404
 
 if __name__ == '__main__':
-    logger.info("Starting Sales Tools API - ECS Fargate Version 1.2.0")
+    logger.info("Starting Sales Tools API - ECS Fargate Version 1.3.0")
     app.run(host='0.0.0.0', port=8080, debug=False)
