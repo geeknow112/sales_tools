@@ -78,10 +78,11 @@ def lambda_handler(event, context):
             
             # PR テスト用の追加情報
             result['pr_test'] = {
-                'version': '1.1.0',
-                'feature': 'CodePipeline PR Test',
+                'version': '1.2.0',
+                'feature': 'Webhook Auto Trigger Test',
                 'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'deployment_method': 'GitHub PR → CodePipeline → Lambda'
+                'deployment_method': 'GitHub PR Merge → Webhook → CodePipeline → Lambda',
+                'test_id': 'webhook-auto-trigger-test-1754095832'
             }
             
         else:
