@@ -35,7 +35,7 @@ def get_status():
     """ステータス情報の取得"""
     return jsonify({
         'message': 'Sales Tools API - ECS Fargate Version',
-        'version': '1.0.0',
+        'version': '1.1.0',
         'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
         'deployment_method': 'ECS Fargate',
         'status': 'active',
@@ -73,7 +73,7 @@ def analyze_product():
                 'last_updated': time.strftime("%Y-%m-%d %H:%M:%S")
             },
             'metadata': {
-                'api_version': '1.0.0',
+                'api_version': '1.1.0',
                 'processing_time_ms': 150,
                 'data_source': 'sales_tools_api'
             }
@@ -120,7 +120,7 @@ def get_product_info(asin):
             },
             'metadata': {
                 'retrieved_at': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'api_version': '1.0.0'
+                'api_version': '1.1.0'
             }
         }
         
