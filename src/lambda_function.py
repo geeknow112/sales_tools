@@ -7,6 +7,7 @@ import json
 import logging
 import sys
 import os
+import time
 
 # Sales Tools APIクライアントをインポート
 from sales_tools_api_client import SalesToolsAPIClient
@@ -74,6 +75,14 @@ def lambda_handler(event, context):
         elif action == 'status':
             # API状況確認
             result = client.get_api_status()
+            
+            # PR テスト用の追加情報
+            result['pr_test'] = {
+                'version': '1.1.0',
+                'feature': 'CodePipeline PR Test',
+                'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+                'deployment_method': 'GitHub PR → CodePipeline → Lambda'
+            }
             
         else:
             return {
