@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sales Tools API - ECS Fargate Application
-Amazon商品価格分析のためのECSアプリケーション
+Sales Tools API - ECS Fargate Application v1.2.0
+Amazon商品価格分析のためのECSアプリケーション（トラッキング機能強化版）
 """
 
 import json
@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from flask import Flask, request, jsonify
+from tracking_manager import tracking_manager
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -28,52 +29,109 @@ def health_check():
         'status': 'healthy',
         'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
         'service': 'sales-tools-api'
-    }), 200
+    })
 
 @app.route('/status', methods=['GET'])
 def get_status():
     """ステータス情報の取得"""
     return jsonify({
         'message': 'Sales Tools API - ECS Fargate Version',
-        'version': '1.1.0',
+        'version': '1.2.0',
         'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
         'deployment_method': 'ECS Fargate',
         'status': 'active',
         'environment': {
-            'has_api_key': bool(SALES_TOOLS_API_KEY and SALES_TOOLS_API_KEY != 'test_api_key_placeholder'),
+            'platform': 'ECS Fargate',
             'runtime': 'python3.9',
-            'platform': 'ECS Fargate'
+            'has_api_key': bool(SALES_TOOLS_API_KEY and SALES_TOOLS_API_KEY != 'test_api_key_placeholder')
         }
-    }), 200
+    })
+
+@app.route('/tracking', methods=['GET'])
+def get_tracking_status():
+    """トラッキング状況の取得"""
+    try:
+        summary = tracking_manager.get_tracking_summary()
+        products = tracking_manager.get_all_tracked_products()
+        
+        return jsonify({
+            'summary': summary,
+            'products': products,
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in get_tracking_status: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get tracking status',
+            'message': str(e),
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+        }), 500
+
+@app.route('/tracking/<asin>', methods=['GET'])
+def get_product_tracking(asin):
+    """特定商品のトラッキング状況取得"""
+    try:
+        product_status = tracking_manager.get_product_status(asin)
+        if not product_status:
+            return jsonify({
+                'error': 'Product not found',
+                'asin': asin,
+                'message': 'This product is not in the tracking list',
+                'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+            }), 404
+        
+        # 価格データのシミュレーション
+        price_data = tracking_manager.simulate_price_data(asin)
+        
+        return jsonify({
+            'asin': asin,
+            'tracking_info': product_status,
+            'price_data': price_data,
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in get_product_tracking: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get product tracking',
+            'message': str(e),
+            'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+        }), 500
 
 @app.route('/analyze', methods=['POST'])
 def analyze_product():
     """商品価格分析エンドポイント"""
     try:
         data = request.get_json()
-        asin = data.get('asin', 'B0B5SDFLTB')
+        if not data or 'asin' not in data:
+            return jsonify({
+                'error': 'Invalid request',
+                'message': 'ASIN is required',
+                'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+            }), 400
+        
+        asin = data['asin']
         domain = data.get('domain', 'JP')
         
-        logger.info(f"Price analysis request: ASIN={asin}, Domain={domain}")
+        logger.info(f"Analysis request: ASIN={asin}, Domain={domain}")
         
-        # 現在はテスト用のレスポンス
-        # 実際のSales Tools API連携は後で実装
+        # トラッキング状況確認
+        tracking_status = tracking_manager.get_product_status(asin)
+        
+        # 分析結果（シミュレーション）
         response_data = {
-            'message': 'Price analysis completed',
             'asin': asin,
             'domain': domain,
             'analysis': {
                 'current_price': 1980,
-                'average_price': 2100,
-                'lowest_price': 1850,
-                'highest_price': 2300,
-                'trend': 'decreasing',
-                'recommendation': 'good_time_to_buy',
-                'confidence': 0.85,
-                'last_updated': time.strftime("%Y-%m-%d %H:%M:%S")
+                'avg_price_30d': 2100,
+                'price_trend': 'decreasing',
+                'recommendation': 'good_time_to_buy'
             },
+            'tracking_status': tracking_status,
             'metadata': {
-                'api_version': '1.1.0',
+                'api_version': '1.2.0',
                 'processing_time_ms': 150,
                 'data_source': 'sales_tools_api'
             }
@@ -97,7 +155,10 @@ def get_product_info(asin):
         
         logger.info(f"Product info request: ASIN={asin}, Domain={domain}")
         
-        # 現在はテスト用のレスポンス
+        # トラッキング状況確認
+        tracking_status = tracking_manager.get_product_status(asin)
+        
+        # 商品情報（シミュレーション）
         response_data = {
             'asin': asin,
             'domain': domain,
@@ -118,9 +179,10 @@ def get_product_info(asin):
                 'max_price': 2300,
                 'avg_price': 2100
             },
+            'tracking_status': tracking_status,
             'metadata': {
                 'retrieved_at': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'api_version': '1.1.0'
+                'api_version': '1.2.0'
             }
         }
         
@@ -129,7 +191,7 @@ def get_product_info(asin):
     except Exception as e:
         logger.error(f"Error in get_product_info: {str(e)}")
         return jsonify({
-            'error': 'Product info retrieval failed',
+            'error': 'Failed to get product info',
             'message': str(e),
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
         }), 500
@@ -143,27 +205,14 @@ def not_found(error):
         'available_endpoints': [
             'GET /health',
             'GET /status', 
+            'GET /tracking',
+            'GET /tracking/<asin>',
             'POST /analyze',
             'GET /product/<asin>'
         ],
         'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
     }), 404
 
-@app.errorhandler(500)
-def internal_error(error):
-    """500エラーハンドラー"""
-    return jsonify({
-        'error': 'Internal server error',
-        'message': 'An unexpected error occurred',
-        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
-    }), 500
-
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    debug = os.environ.get('DEBUG', 'False').lower() == 'true'
-    
-    logger.info(f"Starting Sales Tools API on port {port}")
-    logger.info(f"Debug mode: {debug}")
-    logger.info(f"API Key configured: {bool(SALES_TOOLS_API_KEY and SALES_TOOLS_API_KEY != 'test_api_key_placeholder')}")
-    
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    logger.info("Starting Sales Tools API - ECS Fargate Version 1.2.0")
+    app.run(host='0.0.0.0', port=8080, debug=False)
